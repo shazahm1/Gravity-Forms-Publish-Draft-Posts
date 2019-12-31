@@ -262,6 +262,8 @@ class Gravity_Forms_Publish_Post_Draft {
 			wp_update_post( $post );
 
 			add_post_meta( $post->ID, '_post_publisher', get_current_user_id() );
+
+			check_and_publish_future_post( $post->ID );
 		}
 
 	}
