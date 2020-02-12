@@ -211,11 +211,19 @@ class Gravity_Forms_Publish_Post_Draft {
 			return;
 		}
 
-		$post = get_post( rgar( $entry, $field_id ) );
+		$post_id = rgar( $entry, $field_id );
+		$post    = get_post( $post_id );
 
 		if ( $post instanceof WP_Post ) {
 
-			$post->post_status = 'publish';
+			$current_time = current_time( 'mysql' );
+
+			$post->post_status   = 'publish';
+			$post->post_date     = $current_time;
+			$post->post_date_gmt = get_gmt_from_date( $current_time, 'Y-m-d H:i:s' );
+
+			wp_update_post( $post );
+			$post = get_post( $post_id );
 
 			if ( $this->option['post_title_id'] && rgar( $entry, $this->option['post_title_id'] ) ) {
 
