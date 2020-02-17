@@ -123,6 +123,21 @@ class GF_Post_Draft_To_Publish extends GFAddOn {
 						'tooltip' => 'Datetime modifier to apply to the selected post publish date time fields.',
 						'class'   => 'small',
 					),
+					array(
+						'label'   => 'Post Lock Checkbox',
+						'type'    => 'text',
+						'name'    => 'ppd-post_lock_id',
+						'tooltip' => 'Enter the field ID of the checkbox which will trigger the post lock.',
+						'class'   => 'small',
+					),
+					array(
+						'label'   => 'Post Lock Interval',
+						'type'    => 'text',
+						'name'    => 'ppd-post_interval',
+						'tooltip' => 'Enter the number of seconds a post should be locked.',
+						'class'   => 'small',
+						'default_value' => 600,
+					),
 				),
 			),
 		);
@@ -139,11 +154,16 @@ class Gravity_Forms_Publish_Post_Draft {
 		'post_date_id'           => 0,
 		'post_time_id'           => 0,
 		'post_datetime_modifier' => FALSE,
+		'post_lock_id'           => 0,
+		'post_interval'          => 600,
 	);
 
 	public function __construct() {
 
 		add_filter( 'gform_form_post_get_meta', array( $this, 'maybe_add_hooks' ), 10 );
+
+		// AJAX action needs added here so it is registered in time with WP.
+		add_action( 'wp_ajax_gf-post-lock', array( __CLASS__, 'post_lock' ) );
 	}
 
 	public function maybe_add_hooks( $form ) {
@@ -165,6 +185,9 @@ class Gravity_Forms_Publish_Post_Draft {
 
 			$this->option['post_datetime_modifier'] = rgar( $settings, 'ppd-post_datetime_modifier', FALSE );
 
+			$this->option['post_lock_id']  = rgar( $settings, 'ppd-post_lock_id', 0 );
+			$this->option['post_interval'] = rgar( $settings, 'ppd-post_interval', 600 );
+
 			add_action(
 				"gform_after_submission_{$form['id']}",
 				array( $this, 'update_post_status' ),
@@ -181,12 +204,63 @@ class Gravity_Forms_Publish_Post_Draft {
 
 			add_filter(
 				"gform_pre_render_{$form['id']}",
+				array( $this, 'filter_posts' ),
+				10,
+				3
+			);
+
+			add_filter(
+				"gform_pre_render_{$form['id']}",
 				array( $this, 'populate_date_on_pre_render' )
+			);
+
+			add_filter(
+				"gform_pre_render_{$form['id']}",
+				array( $this, 'on_change' )
+			);
+
+			add_filter(
+				"gform_enqueue_scripts_{$form['id']}",
+				array( $this, 'enqueue_scripts' )
 			);
 
 		}
 
 		return $form;
+	}
+
+	/**
+	 * Enqueue the `wp-util` library so the `wp.ajax` utils can be used.
+	 */
+	public function enqueue_scripts() {
+
+		wp_enqueue_script( 'wp-util' );
+	}
+
+	/**
+	 * Callback for the `wp_ajax_` action.
+	 *
+	 * Set post lock meta.
+	 */
+	public static function post_lock() {
+
+		if ( ! isset( $_POST['post_ID'] ) || empty( $_POST['post_ID'] ) ) {
+
+			wp_send_json_error( 'Post ID is required.' );
+		}
+
+		$post_ID = absint( $_POST['post_ID'] );
+
+		$result = check_ajax_referer( 'gf_post_lock', 'nonce', false );
+
+		if ( false === $result ) {
+
+			wp_send_json_error( 'Check AJAX referer failed.' );
+		}
+
+		$result = wp_set_post_lock( $post_ID );
+
+		wp_send_json_success( $result );
 	}
 
 	public function disable_post_creation( $is_disabled, $form, $entry ) {
@@ -279,6 +353,48 @@ class Gravity_Forms_Publish_Post_Draft {
 	/**
 	 * Callback for the `gform_pre_render_{id}` filter.
 	 *
+	 * Remove posts that are currently locked from the post choice options.
+	 *
+	 * @param array $form         The form object.
+	 * @param bool  $ajax         Is AJAX enabled.
+	 * @param array $field_values An array of dynamic population parameter keys with their corresponding values to be
+	 *                            populated.
+	 *
+	 * @return array
+	 */
+	public function filter_posts( $form, $ajax, $field_values ) {
+
+		$post_lock_interval = function() { return $this->option['post_interval']; };
+
+		add_filter( 'wp_check_post_lock_window', $post_lock_interval );
+
+		foreach ( $form['fields'] as &$field ) {
+
+			// Process only the Post ID field.
+			if ( (int) $this->option['post_id_field'] !== (int) $field['id'] ) continue;
+
+			// Check for the `choices` index and ensure it is an array.
+			if ( ! isset( $field->choices ) || ! is_array( $field->choices ) ) continue;
+
+			foreach ( $field->choices as $i => &$choice ) {
+
+				// If post is locked, remove it from choices.
+				if ( false !==  wp_check_post_lock( $choice['value'] ) ) {
+
+					unset( $field->choices[ $i ] );
+				}
+			}
+
+		}
+
+		remove_filter( 'wp_check_post_lock_window', $post_lock_interval );
+
+		return $form;
+	}
+
+	/**
+	 * Callback for the `gform_pre_render_{id}` filter.
+	 *
 	 * @param array $form The form object.
 	 *
 	 * @return mixed
@@ -332,6 +448,68 @@ class Gravity_Forms_Publish_Post_Draft {
 				);
 			}
 		}
+
+		return $form;
+	}
+
+	/**
+	 * Callback for the `gform_pre_render_{id}` filter.
+	 *
+	 * Add an on change event to set the post lock meta data.
+	 *
+	 * @param array $form The form object.
+	 *
+	 * @return array
+	 */
+	public function on_change( $form ) {
+
+		$json = wp_json_encode( $this->option );
+
+		?>
+		<script type="text/javascript">
+			var postLockOptions = <?php echo $json; ?>;
+			console.log( postLockOptions );
+		</script>
+		<script type="text/javascript">
+			gform.addAction(
+				'gform_input_change',
+				function( elem, formId, fieldId ) {
+
+					if ( <?php echo "\"{$this->option['post_lock_id']}.1\"" ?> === fieldId ) {
+
+						// console.log( fieldId );
+						var field  = jQuery( elem );
+						var choose = jQuery( '#input_' + formId + '_' + postLockOptions.post_id_field );
+						var nonce  = '<?php echo wp_create_nonce( 'gf_post_lock' ); ?>';
+
+						if ( field.is( ':checked' ) ) {
+
+							choose.prop( 'disabled', true );
+							console.log( 'isChecked' );
+
+							wp.ajax.send(
+								'gf-post-lock',
+								{
+									data: {
+										nonce: nonce,
+										post_ID: choose.children( 'option:selected' ).val(),
+									}
+								}
+							);
+
+						} else {
+
+							choose.prop( 'disabled', false );
+							console.log( 'notChecked' );
+						}
+					}
+
+					// console.log( fieldId, elem );
+				},
+				10
+			);
+		</script>
+		<?php
 
 		return $form;
 	}
