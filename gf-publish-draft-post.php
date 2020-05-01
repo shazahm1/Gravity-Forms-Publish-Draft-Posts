@@ -93,6 +93,30 @@ class GF_Post_Draft_To_Publish extends GFAddOn {
 						'class' => 'small',
 					),
 					array(
+						'label'         => 'Post Status',
+						'type'          => 'select',
+						'name'          => 'ppd-status',
+						'choices'       => array(
+							array(
+								'label' => 'Published',
+								'value' => 'publish',
+							),
+							array(
+								'label' => 'Pending Review',
+								'value' => 'pending',
+							),
+							array(
+								'label' => 'Draft',
+								'value' => 'draft',
+							),
+							array(
+								'label' => 'Private',
+								'value' => 'private',
+							),
+						),
+						'default_value' => 'publish',
+					),
+					array(
 						'label' => 'Field ID for Post Title',
 						'type'  => 'text',
 						'name'  => 'ppd-post_title_id',
@@ -149,6 +173,7 @@ class Gravity_Forms_Publish_Post_Draft {
 
 	private $option = array(
 		'post_id_field'          => 0,
+		'post_status'            => 'publish',
 		'post_title_id'          => 0,
 		'post_content_id'        => 0,
 		'post_date_id'           => 0,
@@ -177,6 +202,7 @@ class Gravity_Forms_Publish_Post_Draft {
 			) && '1' === $settings['ppd-enabled'] ) {
 
 			$this->option['post_id_field']   = rgar( $settings, 'ppd-field_id', 0 );
+			$this->option['post_status']     = rgar( $settings, 'ppd-status', 'publish' );
 			$this->option['post_title_id']   = rgar( $settings, 'ppd-post_title_id', 0 );
 			$this->option['post_content_id'] = rgar( $settings, 'ppd-post_content_id', 0 );
 
@@ -292,7 +318,7 @@ class Gravity_Forms_Publish_Post_Draft {
 
 			$current_time = current_time( 'mysql' );
 
-			$post->post_status   = 'publish';
+			$post->post_status   = $this->option['post_status'];
 			$post->post_date     = $current_time;
 			$post->post_date_gmt = get_gmt_from_date( $current_time, 'Y-m-d H:i:s' );
 
