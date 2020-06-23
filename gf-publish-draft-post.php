@@ -93,28 +93,31 @@ class GF_Post_Draft_To_Publish extends GFAddOn {
 						'class' => 'small',
 					),
 					array(
-						'label'         => 'Post Status',
-						'type'          => 'select',
-						'name'          => 'ppd-status',
-						'choices'       => array(
-							array(
-								'label' => 'Published',
-								'value' => 'publish',
-							),
-							array(
-								'label' => 'Pending Review',
-								'value' => 'pending',
-							),
-							array(
-								'label' => 'Draft',
-								'value' => 'draft',
-							),
-							array(
-								'label' => 'Private',
-								'value' => 'private',
-							),
-						),
-						'default_value' => 'publish',
+						//'label'         => 'Post Status',
+						'label' => 'Field ID for Post Status',
+						//'type'  => 'select',
+						'type'  => 'text',
+						'name'  => 'ppd-status',
+						'class' => 'small',
+						//'choices'       => array(
+						//	array(
+						//		'label' => 'Published',
+						//		'value' => 'publish',
+						//	),
+						//	array(
+						//		'label' => 'Pending Review',
+						//		'value' => 'pending',
+						//	),
+						//	array(
+						//		'label' => 'Draft',
+						//		'value' => 'draft',
+						//	),
+						//	array(
+						//		'label' => 'Private',
+						//		'value' => 'private',
+						//	),
+						//),
+						//'default_value' => 'publish',
 					),
 					array(
 						'label' => 'Field ID for Post Title',
@@ -203,6 +206,7 @@ class Gravity_Forms_Publish_Post_Draft {
 
 			$this->option['post_id_field']   = rgar( $settings, 'ppd-field_id', 0 );
 			$this->option['post_status']     = rgar( $settings, 'ppd-status', 'publish' );
+			//$this->option['post_status']     = rgar( $settings, 'ppd-status', 0 );
 			$this->option['post_title_id']   = rgar( $settings, 'ppd-post_title_id', 0 );
 			$this->option['post_content_id'] = rgar( $settings, 'ppd-post_content_id', 0 );
 
@@ -318,12 +322,18 @@ class Gravity_Forms_Publish_Post_Draft {
 
 			$current_time = current_time( 'mysql' );
 
-			$post->post_status   = $this->option['post_status'];
+			//$post->post_status   = $this->option['post_status'];
+			$post->post_status   = 'draft';
 			$post->post_date     = $current_time;
 			$post->post_date_gmt = get_gmt_from_date( $current_time, 'Y-m-d H:i:s' );
 
 			wp_update_post( $post );
 			$post = get_post( $post_id );
+
+			if ( $this->option['post_status'] && rgar( $entry, $this->option['post_status'] ) ) {
+
+				$post->post_status = rgar( $entry, $this->option['post_status'] );
+			}
 
 			if ( $this->option['post_title_id'] && rgar( $entry, $this->option['post_title_id'] ) ) {
 
